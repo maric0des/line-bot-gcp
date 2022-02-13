@@ -3,6 +3,8 @@ import * as admin from 'firebase-admin';
 import * as line from '@line/bot-sdk';
 require('dotenv').config();
 
+import { MessageOnly, MessageButton } from './Messages';
+
 // Initialize admin to access firestore
 admin.initializeApp();
 
@@ -24,40 +26,6 @@ export const sendLine = functions.https.onRequest(async (req, res) => {
   const replyToken = events[0].replyToken;
   const timestamp = events[0].timestamp;
 
-  // Message Object
-  const msgObj = {
-    "type": "flex",
-    "altText": "Flex message",
-    "contents": {
-        "type": "bubble",
-        "body": {
-          "type": "box",
-          "layout": "horizontal",
-          "contents": [
-            {
-              "type": "text",
-              "text": ""
-            }
-          ]
-        },
-        "footer": {
-          "type": "box",
-          "layout": "horizontal",
-          "contents": [{}]
-        }
-      }
-  };
-  const buttonObj = {
-        "type": "button",
-        "action": {
-          "type": "uri",
-          "label": "action",
-          "uri": ""
-        },
-        "style": "primary",
-        "color": "#0a95ff"
-      };
-
   // Firestore query
   const users = db.collection("Users");
   const query = users.where("userId", "==", userId);
@@ -66,24 +34,29 @@ export const sendLine = functions.https.onRequest(async (req, res) => {
     .then(async (querySnapshot) => {
       if (querySnapshot.empty) {
         // Create new document when user does not exist
-        await users.doc(timestamp.toString()).set({
-            "userId": userId
+        users.doc(timestamp.toString()).set({
+            "userId": userId,
         })
+          .then(async () => {
+            MessageOnly.contents.body.contents[0].text = 'Account does not exist.';
+    
+            client.replyMessage(replyToken, MessageOnly as line.FlexMessage)
+              .then((result) => res.status(200).send(result))
+              .catch((err) => console.log("ErrorSendingMessage: " , err));
+          })
+          .catch((err) => console.log("ErrorSavingUserData: ", err))
         
-        msgObj.contents.body.contents[0].text = 'Account does not exist.';
-
-        const result = await client.replyMessage(replyToken, msgObj as line.FlexMessage);
-        res.status(200).send(result);
       } else {
         querySnapshot.forEach(async (doc) => {
-          const firstName = doc.get("firstName");
-          const lastName = doc.get("lastName");
+          // TODO: Register name of guest.
+          // const firstName = doc.get("firstName");
+          // const lastName = doc.get("lastName");
 
-          buttonObj.action.uri = 'https://google.com';
-          msgObj.contents.body.contents[0].text = `Welcome back, ${lastName} ${firstName}`;
-          msgObj.contents.footer.contents[0] = buttonObj;
+          MessageButton.contents.body.contents[0].text = `Welcome back, Guest!`;
+          MessageButton.contents.footer.contents[0].action.label = 'Register';
+          MessageButton.contents.footer.contents[0].action.uri = 'https://google.com';
 
-          const result = await client.replyMessage(replyToken, msgObj as line.FlexMessage);
+          const result = await client.replyMessage(replyToken, MessageButton as line.FlexMessage);
           res.status(200).send(result);
         });
       }
